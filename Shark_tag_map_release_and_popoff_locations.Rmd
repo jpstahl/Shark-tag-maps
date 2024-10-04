@@ -31,6 +31,7 @@ library(ggspatial)
 library(cowplot) #for insert map
 ```
 
+********************************************
 ## Get base maps
 ###Register google key 
 ```{r include=FALSE, warning=FALSE}
@@ -56,6 +57,10 @@ Pacgooglemapzoom_4 <- get_map(location = c(lon = -155, lat = 20),
                        maptype  = "satellite", 
                        zoom     = 4)
 
+ASgooglemap <- get_map(location = c(lon = -171, lat = -10),
+                       source   = "google",
+                       maptype  = "satellite",
+                       zoom     = 4)
 ```
 ###Display google map using ggmap, which uses grid graphics.
 ```{r display Pacific map}
@@ -68,8 +73,11 @@ Pacbasemapzoom
 Pacbasemapzoom_4<- ggmap(Pacgooglemapzoom_4)
 Pacbasemapzoom_4
 
+ASbasemap<- ggmap(ASgooglemap)
+ASbasemap
 ```
 
+*****************************************************************
 ##Import shark data
 ```{r import data}
 sharks <-read.csv(file="C:/R_git_stuff/Shark-tag-maps/LL_TAG_DATA_GOOD_Nov14_2022.csv", header=TRUE, sep=",")
@@ -101,12 +109,38 @@ tagpaths
 ggsave("Shark tag paths.jpg") 
 ```
 
+##Subset data to separate AS and HI fishery tag releases.
+###9999 trips are on HI boats.
+```{r subset data}
+HI_sharks <-sharks %>% filter(grepl('LL|9999',TRIP_NUM_OBSERVER))
+AS_sharks <-sharks %>% filter(grepl('AS',TRIP_NUM_OBSERVER))
+
+#Filter out tags with no popoff location info.
+HI_sharks <- HI_sharks %>% filter(!is.na(POPOFF_LON_DD))
+AS_sharks <- AS_sharks %>% filter(!is.na(POPOFF_LON_DD))
+```
+
+###Map tag paths for each fishery on basemap.
+```{r map tagpaths by fishery}
+AS_tags <- ASbasemap + geom_segment(aes(x = DEPLOY_LON_DD, y = DEPLOY_LAT_DD, xend = POPOFF_LON_DD, yend = POPOFF_LAT_DD, colour = SPECIES), arrow = arrow(angle = 30, length = unit(0.1, "cm"), ends = "last", type = "open"), data = AS_sharks)
+AS_tags
+
+HI_tags <- Pacbasemapzoom + geom_segment(aes(x = DEPLOY_LON_DD, y = DEPLOY_LAT_DD, xend = POPOFF_LON_DD, yend = POPOFF_LAT_DD, colour = SPECIES), arrow = arrow(angle = 30, length = unit(0.1, "cm"), ends = "last", type = "open"), data = HI_sharks)
+HI_tags 
+```
+
 ******************************************************************
 ##Reference map 
-### Purpose to create a reference map if zoomed in on main map.
+### Purpose to create a reference map if zoomed in on main map, such as for AS deployed tags.
 
+###Plot AS tags on Pacific base map to use as reference map.
+```{r}
+AS_Pacbasemap <- Pacbasemapzoom + geom_segment(aes(x = DEPLOY_LON_DD, y = DEPLOY_LAT_DD, xend = POPOFF_LON_DD, yend = POPOFF_LAT_DD, colour = SPECIES), arrow = arrow(angle = 30, length = unit(0.1, "cm"), ends = "last", type = "open"), data = AS_sharks)
+AS_Pacbasemap
+```
 ###Get bounding box values for reference map.
 ####Note - Lat is y and Lon is x.
+
 ```{r bounding box}
 Paczoombb <-attr(Pacgooglemapzoom, "bb") #this only extracts the bounding box for the google map not the map transformed with ggmap.
 Paczoombb 
@@ -122,14 +156,13 @@ Pacmapzoom_bblines    <- data.frame(x1 = c(-211, -98.7, -98.7, -211),
 
 ###Add the bounding box layer to the map of tagpaths
 ```{r map bb}
-Paczoom_insert_map <-tagpaths + geom_segment(aes(x = x1, y = y1, xend = x2, yend = y2, colour = "red"), 
-                               show.legend = FALSE, data = Pacmapzoom_bblines)
-Paczoom_insert_map
+Pacific_insert_map <-AS_Pacbasemap + geom_segment(aes(x = x1, y = y1, xend = x2, yend = y2, colour = "red"), show.legend = FALSE, data = Pacmapzoom_bblines)
+Pacific_insert_map
 ```
 
 ###Remove the x and y axes from the Pacific reference map.
 ```{r remove axes}
-Paczoom_insert_map_nobackground <- Paczoom_insert_map +
+Pacific_insert_map_nobackground <- Pacific_insert_map +
       theme(plot.background =
       element_rect(fill = NA, linetype = 1,
       size = 0.01, colour = "black"),
@@ -140,14 +173,17 @@ Paczoom_insert_map_nobackground <- Paczoom_insert_map +
       axis.title.x=element_blank(),
       axis.title.y=element_blank(),
       legend.position="none")
+Pacific_insert_map_nobackground
 ```
-### Display the Pacific reference map with the final Pac map map.
+
+### Display the Pacific reference map with the zoomed in AS tag map.
 ```{r reference map}
-Pac_tag_map_final <- ggdraw() +
-  draw_plot(Pac_tag_map_arrow_and_bar, 0, 0, 1, 1) +
-  draw_plot(Paczoom_insert_map_nobackground, 0.2,0.7,0.25,0.25)
-Pac_tag_map_final
+AS_tag_map_final <- ggdraw() +
+  draw_plot(AS_tags, 0, 0, 1, 1) +
+  draw_plot(Pacific_insert_map_nobackground, 0.2,0.7,0.25,0.25)
+AS_tag_map_final
 ggsave("Pac_tag_map_final.jpg") 
+
 ```
 
 ******************************************************************
@@ -169,6 +205,9 @@ Note that Lat is y and Lon is x.
 ```{r bounding box}
 Paczoombb <-attr(Pacgooglemapzoom, "bb") #this only extracts the bounding box for the google map not the map transformed with ggmap.
 Paczoombb 
+
+ASbb <-attr(ASgooglemap, "bb") #this only extracts the bounding box for the google map not the map transformed with ggmap.
+ASbb
 ```
 
 ### Add scalebar layer to map.
@@ -181,6 +220,12 @@ Pac_tag_map_with_scalebar <- tagpaths + ggsn::scalebar(dist = 2000, dist_unit = 
                            anchor = c(x=-110, y=-22))
 Pac_tag_map
 
+AS_tag_map <- AS_tags + ggsn::scalebar(dist = 1000, dist_unit = "km", transform = TRUE, model = "WGS84",
+                        height = 0.02, st.dist = 0.05, st.bottom = TRUE, st.size = 4, st.color = "white", 
+                        border.size = 0.05,x.min = -199, y.min = -35.7, x.max = -143, y.max = 17.7, 
+                        anchor = c(x=-150, y=-30))
+AS_tag_map
+
 ```
 
 ##North arrow
@@ -191,10 +236,11 @@ Pac_tag_map
 Pac_tag_map_arrow_and_bar <- tagpaths + geom_spatial_point(aes()) +
   annotation_north_arrow(which_north = "true", location="tr", height = unit(0.75, "cm"),
   width = unit(0.75, "cm"),)
-
-
 Pac_tag_map_arrow_and_bar
 ggsave("Pac_tag_map_arrow_and_bar.jpg") #
+
+AS_tag_map_witharrow <-AS_tag_map + geom_segment(arrow=arrow(length=unit(3,"mm")),aes(x=-190,xend=-190,y=-29,yend=-25), colour="white")+annotate(x=-190, y=-30, label="N", colour="white", geom="text", size=5)
+AS_tag_map_witharrow
 ```
 
 *******************************************************************
